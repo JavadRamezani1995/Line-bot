@@ -1,0 +1,318 @@
+# Colab cell ▶ copy & paste everything below into one cell and run
+
+# 1) Install requirements
+!pip install flask line-bot-sdk pyngrok
+
+# 2) Imports & credentials – replace the placeholders below!
+from flask import Flask, request, abort
+from linebot import LineBotApi, WebhookHandler
+from linebot.models import (
+    MessageEvent, TextMessage, TextSendMessage,
+    TemplateSendMessage, ButtonsTemplate,
+    CarouselTemplate, CarouselColumn, MessageAction
+)
+from linebot.exceptions import InvalidSignatureError
+from pyngrok import ngrok
+
+LINE_CHANNEL_ACCESS_TOKEN = 'll65x4KXrRTC/BhrlsLvkJpAaGMHA5zkDzFSsKjEOshmCrdvE5Zq4kfw6CMteyoKBqJfKFuMGnPF/iE9RZYLCLVTNAsuvFYXHde+Iptxg+Owlg8kwIR9Bd1BN/zt1Vqp0R7O8n4LNxNL5m4uFF9PLQdB04t89/1O/w1cDnyilFU='
+LINE_CHANNEL_SECRET      = '1ca2691e7185f7a91e1742d014f82b44'
+NGROK_AUTHTOKEN          = '2wB6u31MuSCi9Procs5EUegUF50_4XrNKQCQ1GXr1Ptst2gRm'
+
+# 3) ngrok setup
+!ngrok authtoken '{NGROK_AUTHTOKEN}'
+public_url = ngrok.connect(5000)
+print(f"🔗 Your webhook URL is: {public_url}/callback")
+
+# 4) Flask & LINE handler
+app = Flask(__name__)
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler      = WebhookHandler(LINE_CHANNEL_SECRET)
+
+# 5) Product data
+CATEGORIES = [
+    { 'title': 'Electronics & Gadgets',  'subs': ['Smartphone','Wireless Headphones','Smartwatches'] },
+    { 'title': 'Fashion & Apparel',       'subs': ['T-shirt','Sneakers','Handbag'] },
+    { 'title': 'Beauty & Personal Care',  'subs': ['Facial Serum','Lipstick','Shampoo'] },
+    { 'title': 'Home & Kitchen',          'subs': ['Coffee Maker','Throw Pillow','Storage Container'] },
+    { 'title': 'Food & Beverages',        'subs': ['Coffee Beans','Gourmet Cookies','Craft Beer'] },  # کوتاه شده
+    { 'title': 'Health & Fitness',        'subs': ['Yoga Mat','Protein Powder','Fitness Tracker'] },
+    { 'title': 'Toys & Hobbies',          'subs': ['Building Blocks','Paint Set','Board Game'] },
+    { 'title': 'Accessories',             'subs': ['Phone Case','Necklace','Baseball Cap'] },
+    { 'title': 'Pet Products',            'subs': ['Dog Food','Cat Toy','Pet Bed'] },
+]
+
+PRODUCT_DETAILS = {
+    'smartphone': {
+        'name':'Galaxy Ultra S25','category':'Smartphones',
+        'desc':'Latest flagship smartphone with a high-res camera & fast processor.',
+        'link':'[Link]'
+    },
+    'wireless headphones': {
+        'name':'NoiseCancelling Pro Buds','category':'Wireless Headphones',
+        'desc':'Premium over-ear headphones w/ active noise cancellation & long battery life.',
+        'link':'[Link]'
+    },
+    'smartwatches': {
+        'name':'FitTrack Pro 7','category':'Smartwatches',
+        'desc':'Advanced smartwatch w/ heart-rate monitoring, GPS & sleep tracking.',
+        'link':'[Link]'
+    },
+    't-shirt': {
+        'name':'Flowy Linen Blouse','category':'Women\'s Tops',
+        'desc':'Breathable & stylish linen blouse perfect for warm weather.',
+        'link':'[Link]'
+    },
+    'sneakers': {
+        'name':'Leather Casual Sneakers','category':'Men\'s Footwear',
+        'desc':'Comfortable & durable leather sneakers for everyday wear.',
+        'link':'[Link]'
+    },
+    'handbag': {
+        'name':'Woven Straw Tote Bag','category':'Fashion Accessories',
+        'desc':'Trendy straw tote bag ideal for summer outings.',
+        'link':'[Link]'
+    },
+    'facial serum': {
+        'name':'Hyaluronic Acid Serum','category':'Skincare',
+        'desc':'Hydrating serum that helps to plump and moisturize the skin.',
+        'link':'[Link]'
+    },
+    'lipstick': {
+        'name':'Long-Lasting Matte Lipstick','category':'Makeup',
+        'desc':'Highly pigmented matte lipstick that stays put for hours.',
+        'link':'[Link]'
+    },
+    'shampoo': {
+        'name':'Nourishing Hair Mask','category':'Haircare',
+        'desc':'Deep conditioning hair mask to repair and hydrate dry hair.',
+        'link':'[Link]'
+    },
+    'coffee maker': {
+        'name':'Electric Kettle w/ Temp Control','category':'Small Kitchen Appliances',
+        'desc':'Stainless steel electric kettle with precise temperature settings.',
+        'link':'[Link]'
+    },
+    'throw pillow': {
+        'name':'Set of Decorative Throw Pillows','category':'Home Décor',
+        'desc':'Two stylish throw pillows to enhance your living room décor.',
+        'link':'[Link]'
+    },
+    'storage container': {
+        'name':'Airtight Food Storage Containers (Set of 5)','category':'Kitchen Storage',
+        'desc':'Set of five airtight containers to keep your food fresh.',
+        'link':'[Link]'
+    },
+    'coffee beans': {  # کلید و عنوان کوتاه‌شده
+        'name':'Organic Fair Trade Ground Coffee','category':'Coffee and Tea',
+        'desc':'Rich and aromatic organic fair-trade ground coffee.',
+        'link':'[Link]'
+    },
+    'gourmet cookies': {
+        'name':'Gourmet Dark Chocolate Sea Salt Caramels','category':'Snacks',
+        'desc':'Indulgent dark chocolate caramels with a hint of sea salt.',
+        'link':'[Link]'
+    },
+    'craft beer': {
+        'name':'Sparkling Natural Fruit Juice (Pack of 6)','category':'Beverages (Non-Alcoholic)',
+        'desc':'Refreshing sparkling fruit juice with no added sugar.',
+        'link':'[Link]'
+    },
+    'yoga mat': {
+        'name':'Adjustable Resistance Bands Set','category':'Fitness Equipment',
+        'desc':'Set of five resistance bands with varying levels for versatile workouts.',
+        'link':'[Link]'
+    },
+    'protein powder': {
+        'name':'Plant-Based Protein Powder (Vanilla)','category':'Nutritional Supplements',
+        'desc':'Vegan protein powder perfect for post-workout recovery.',
+        'link':'[Link]'
+    },
+    'fitness tracker': {
+        'name':'Essential Oil Diffuser','category':'Wellness Products',
+        'desc':'Ultrasonic diffuser to fill your space with calming essential oil aromas.',
+        'link':'[Link]'
+    },
+    'building blocks': {
+        'name':'STEM Building Kit for Kids','category':'Educational Toys',
+        'desc':'Engaging building kit that teaches basic engineering principles.',
+        'link':'[Link]'
+    },
+    'paint set': {
+        'name':'Deluxe Acrylic Paint Set (24 Colors)','category':'Arts and Crafts',
+        'desc':'High-quality set of 24 vibrant acrylic paints for artists.',
+        'link':'[Link]'
+    },
+    'board game': {
+        'name':'Strategy Board Game for Adults','category':'Games',
+        'desc':'Engaging strategy board game for 2-4 players.',
+        'link':'[Link]'
+    },
+    'phone case': {
+        'name':'Fast Charging USB-C Cable','category':'Phone Accessories',
+        'desc':'Durable and fast-charging USB-C cable for your devices.',
+        'link':'[Link]'
+    },
+    'necklace': {
+        'name':'Sterling Silver Pendant Necklace','category':'Jewelry',
+        'desc':'Elegant sterling silver pendant necklace for everyday wear.',
+        'link':'[Link]'
+    },
+    'baseball cap': {
+        'name':'Lightweight Backpack for Travel','category':'Bags',
+        'desc':'Comfortable and spacious backpack perfect for travel.',
+        'link':'[Link]'
+    },
+    'dog food': {
+        'name':'Premium Grain-Free Dry Dog Food (Chicken)','category':'Pet Food',
+        'desc':'High-quality grain-free dry dog food with chicken as main ingredient.',
+        'link':'[Link]'
+    },
+    'cat toy': {
+        'name':'Interactive Puzzle Toy for Cats','category':'Pet Toys',
+        'desc':'Engaging puzzle toy that provides mental stimulation for cats.',
+        'link':'[Link]'
+    },
+    'pet bed': {
+        'name':'Orthopedic Pet Bed for Large Dogs','category':'Pet Care Supplies',
+        'desc':'Comfortable orthopedic bed to support large dogs’ joints.',
+        'link':'[Link]'
+    },
+}
+
+# 6) Main webhook endpoint
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers.get('X-Line-Signature','')
+    body      = request.get_data(as_text=True)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+    return 'OK'
+
+# 7) Message handler
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    text = event.message.text.strip().lower()
+
+    # -- MAIN MENU
+    if text in ['menu','start']:
+        buttons = TemplateSendMessage(
+            alt_text='Main Menu',
+            template=ButtonsTemplate(
+                title='Welcome!',
+                text='Please choose:',
+                actions=[
+                    MessageAction(label='🛍️ Our Product', text='our product'),
+                    MessageAction(label='❓ FQA', text='fqa'),
+                    MessageAction(label='📞 Contact Us', text='contact us'),
+                ]
+            )
+        )
+        line_bot_api.reply_message(event.reply_token, buttons)
+        return
+
+    # -- OUR PRODUCT (nine categories in 3-carousels)
+    if text == 'our product':
+        groups = [CATEGORIES[i:i+3] for i in range(0,9,3)]
+        msgs = []
+        for grp in groups:
+            cols = []
+            for cat in grp:
+                cols.append(
+                    CarouselColumn(
+                        title=cat['title'],
+                        text=', '.join(cat['subs'])[:60],
+                        actions=[ MessageAction(label=sub, text=sub.lower()) for sub in cat['subs'] ]
+                    )
+                )
+            msgs.append( TemplateSendMessage(
+                alt_text='Products',
+                template=CarouselTemplate(columns=cols)
+            ) )
+        line_bot_api.reply_message(event.reply_token, msgs)
+        return
+
+    # -- PRODUCT DETAILS
+    if text in PRODUCT_DETAILS:
+        d = PRODUCT_DETAILS[text]
+        msg = (
+            f"🔖 Product: {d['name']}\n"
+            f"📂 Category: {d['category']}\n"
+            f"📝 {d['desc']}\n"
+            f"🔗 Buy here: {d['link']}"
+        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=msg))
+        return
+
+    # -- FQA MENU
+    if text == 'fqa':
+        faq_buttons = TemplateSendMessage(
+            alt_text='FQA Sections',
+            template=ButtonsTemplate(
+                title='FQA',
+                text='Choose a section:',
+                actions=[
+                    MessageAction(label='General Bot Interaction', text='general bot interaction'),
+                    MessageAction(label='Product Information', text='product information'),
+                    MessageAction(label='Ordering & Payment', text='ordering and payment'),
+                    MessageAction(label='Shipping & Delivery', text='shipping and delivery'),
+                    MessageAction(label='Returns & Support', text='returns and support'),
+                ]
+            )
+        )
+        line_bot_api.reply_message(event.reply_token, faq_buttons)
+        return
+
+    # -- Each FAQ section
+    faqs = {
+        'general bot interaction': """Q: How do I start a purchase?
+A: Type "menu" and then choose "Our Product", or use keywords to browse.""",
+        'product information': """Q: How can I see product details?
+A: Tap the product or type "details" + name.
+Q: Can I see images?
+A: Yes—images appear on the details screen.
+Q: How do I know if it’s in stock?
+A: Availability is shown on the detail page.""",
+        'ordering and payment': """Q: How do I add items to my cart?
+A: Tap "Add to Cart" or type "add [product name] to cart".
+Q: How can I view my cart?
+A: Type "view cart".
+Q: Payment methods?
+A: We accept credit/debit cards, PayPal, and mobile pay.""",
+        'shipping and delivery': """Q: What are the shipping costs?
+A: Shown at checkout, based on weight & destination.
+Q: Do you ship to my location?
+A: Enter your address at checkout to see.
+Q: Delivery time?
+A: Estimated timeframe is displayed during checkout.""",
+        'returns and support': """Q: What is your return policy?
+A: 30-day returns if in original condition.
+Q: How do I initiate a return?
+A: Use the "Contact Us" button or type "help".
+Q: Need more help?
+A: Type "help" or click "Contact Us"."""
+    }
+    if text in faqs:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=faqs[text]))
+        return
+
+    # -- Contact Us
+    if text == 'contact us':
+        contact_info = (
+            "📞 +886912345678\n"
+            "📧 Admin@linebot.com\n"
+            "📍 Taiwan, Yunlin County, Douliu City, Logtan Road"
+        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(text=contact_info))
+        return
+
+    # -- Default fallback
+    line_bot_api.reply_message(
+        event.reply_token,
+        TextSendMessage(text="Sorry, I didn't catch that. Please type 'menu' to start.")
+    )
+
+# 8) Run the app
+if __name__ == "__main__":
+    app.run(port=5000)
