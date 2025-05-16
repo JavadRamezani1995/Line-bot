@@ -1,1 +1,72 @@
 
+from flask import Flask, request, abort
+from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
+from linebot.models import *
+from pyngrok import ngrok
+
+# === Your LINE Channel credentials ===
+LINE_CHANNEL_ACCESS_TOKEN = 'L+jRN+wk1h8E/PgYYUqFBxUq3FupdZ5ZTcWOOlCArzOtPzlCHVb7RrkgUE1qNAcidb77WZ7rGwzWYuR0AVdkkSzsS5S7DsJbQXMyp9MotXUleVlsBvVuhRFCiJPHOWZGiBU2ibqWlcWtkBfceWq7hwdB04t89/1O/w1cDnyilFU='
+LINE_CHANNEL_SECRET = '1dc981f6dc500a3ef655a995f9ecf435'
+
+# Set up ngrok with your token (for persistent tunnels)
+!ngrok authtoken '2wB6u31MuSCi9Procs5EUegUF50_4XrNKQCQ1GXr1Ptst2gRm'  # Use your actual ngrok token here!
+
+app = Flask(__name__)
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler = WebhookHandler(LINE_CHANNEL_SECRET)
+
+@app.route("/callback", methods=['POST'])
+def callback():
+    signature = request.headers['X-Line-Signature']
+    body = request.get_data(as_text=True)
+
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
+
+    return 'OK'
+
+@handler.add(MessageEvent, message=TextMessage)
+def handle_message(event):
+    text = event.message.text.lower()
+
+    if text in ['start', 'menu']:
+        buttons_template = TemplateSendMessage(
+            alt_text='Main Menu',
+            template=ButtonsTemplate(
+                title='Department Info',
+                text='Please choose an option:',
+                actions=[
+                    MessageAction(label='📋 Department Info', text='info'),
+                    MessageAction(label='📧 Director Email', text='email'),
+                    MessageAction(label='📍 Location', text='location'),
+                ]
+            )
+        )
+        line_bot_api.reply_message(event.reply_token, buttons_template)
+
+    elif text == 'info':
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="Our department specializes in Computer Science and offers degrees from undergraduate to Ph.D."
+        ))
+    elif text == 'email':
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="You can contact the department director at: director@university.edu"
+        ))
+    elif text == 'location':
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="The department is located at: Building B, 2nd Floor, Room 203, Main Campus."
+        ))
+    else:
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(
+            text="Hi! I hope had a great day so far ,Please type 'menu' to see options."
+        ))
+
+# Start ngrok tunnel
+public_url = ngrok.connect(5000)
+print(f"🌐 Public URL: {public_url}/callback")
+
+# Start Flask app
+app.run()
